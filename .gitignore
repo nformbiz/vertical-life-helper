@@ -1,0 +1,23 @@
+# Sample / real member data — contains PII, never commit
+sample_data/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (if added later)
+node_modules/
+npm-debug.log*
+.env
+.env.local
+
+# Build output (if added later)
+dist/
+build/
