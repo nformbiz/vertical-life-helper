@@ -18,6 +18,9 @@ npm-debug.log*
 .env
 .env.local
 
-# Build output (if added later)
+# Build output
 dist/
 build/
+
+# Tauri — Rust build artifacts are excluded via src-tauri/.gitignore
+# which ignores /target/ and /gen/schemas

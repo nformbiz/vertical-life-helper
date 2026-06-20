@@ -247,11 +247,17 @@
   function renderNav() {
     const nav = document.getElementById('step-nav');
     if (state.step === 0) { nav.innerHTML = ''; return; }
-    nav.innerHTML = STEPS.map(s => `
+    nav.innerHTML = `
+      <button id="nav-home-btn" style="
+        background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);
+        color:#fff;border-radius:.375rem;padding:.25rem .65rem;
+        font-size:.78rem;cursor:pointer;white-space:nowrap;margin-right:.5rem">← Home</button>` +
+      STEPS.map(s => `
       <div class="step-item ${s.n === state.step ? 'active' : s.n < state.step ? 'done' : ''}">
         <span class="step-num">${s.n < state.step ? '✓' : s.n}</span>
         <span class="step-label">${s.label}</span>
       </div>`).join('');
+    document.getElementById('nav-home-btn').addEventListener('click', () => goTo(0));
   }
 
   function h(str) {
@@ -1268,26 +1274,11 @@
   }
 
   // ── Download helpers ──────────────────────────────────────────────────────
-  function downloadSingleFile(file) {
-    const blob = new Blob([file.content], { type: 'text/csv' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
-    a.download = file.filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-  }
-
   async function downloadAllSeparate() {
     const btn = document.getElementById('export-separate-btn');
     btn.disabled = true;
     btn.textContent = '↓ Downloading…';
-    for (const file of state.outputFiles) {
-      downloadSingleFile(file);
-      await new Promise(r => setTimeout(r, 150));
-    }
+    await Exporter.downloadAllFiles(state.outputFiles);
     btn.disabled = false;
     btn.textContent = '↓ Download CSV files';
   }
@@ -1400,7 +1391,7 @@
       btn.addEventListener('click', () => openPreview(Number(btn.dataset.idx)));
     });
     document.querySelectorAll('.dl-single-btn').forEach(btn => {
-      btn.addEventListener('click', () => downloadSingleFile(state.outputFiles[Number(btn.dataset.idx)]));
+      btn.addEventListener('click', () => Exporter.downloadSingleFile(state.outputFiles[Number(btn.dataset.idx)]));
     });
     document.getElementById('export-separate-btn').addEventListener('click', downloadAllSeparate);
     document.getElementById('export-btn').addEventListener('click', async () => {
@@ -1409,9 +1400,14 @@
       btn.innerHTML = '<span class="spin"></span> Building ZIP…';
       try {
         const stamp = new Date().toISOString().slice(0, 10);
-        await Exporter.downloadZip(state.outputFiles, `vertical_life_${stamp}.zip`);
-        btn.innerHTML = '✓ Downloaded!';
-        btn.style.background = '#16a34a';
+        const ok = await Exporter.downloadZip(state.outputFiles, `vertical_life_${stamp}.zip`);
+        if (ok) {
+          btn.innerHTML = '✓ Downloaded!';
+          btn.style.background = '#16a34a';
+        } else {
+          btn.disabled = false;
+          btn.innerHTML = '⬇ Download ZIP';
+        }
       } catch (err) {
         btn.disabled = false;
         btn.innerHTML = '⬇ Download ZIP';

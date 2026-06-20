@@ -2,29 +2,67 @@
 
 ## What this is
 
-A standalone browser-based HTML/JS app (no build step, no framework) that bridges two climbing event systems:
+A standalone HTML/JS app that bridges two climbing event systems:
 - **Wild Apricot** — athlete registration platform, exports XLS/XLSX/CSV
 - **Vertical Life** — scoring software, requires a specific CSV import format
 
-It lives entirely in `index.html` + `src/` and runs directly from the filesystem or any static host.
+Runs as a **web app** (open `public/index.html` from any static host) or as a **native Windows desktop app** (Tauri 2 wrapper, produces a standalone `.exe`).
 
 ---
 
 ## File structure
 
 ```
-index.html          — shell, all CSS, loads vendor CDN libs + src modules
-src/app.js          — CSV Export wizard (steps 0-6) + home screen
-src/parser.js       — SheetJS XLS/XLSX + PapaParse CSV parsing, date normalisation
-src/transformer.js  — filtering, discipline/category grouping, CSV generation
-src/exporter.js     — JSZip bundle + browser download
-src/bibs.js         — Bib Printer module (standalone, IIFE pattern)
+public/
+  index.html        — shell, all CSS, loads vendor libs + src modules
+  src/app.js        — CSV Export wizard (steps 0-6) + home screen
+  src/parser.js     — SheetJS XLS/XLSX + PapaParse CSV parsing, date normalisation
+  src/transformer.js — filtering, discipline/category grouping, CSV generation
+  src/exporter.js   — file saving (native dialog in Tauri, blob download in browser)
+  src/bibs.js       — Bib Printer module (standalone, IIFE pattern)
+  vendor/           — vendored JS libs: xlsx.full.min.js, papaparse.min.js, jszip.min.js
+
+src-tauri/          — Tauri 2 Rust shell + config
+  tauri.conf.json   — app config (frontendDist: ../public, window 1100×800)
+  src/lib.rs        — custom save_text_file / save_binary_file commands
+  permissions/      — save-files.toml (Tauri permission definitions for custom commands)
+  capabilities/     — default.json
+  icons/            — app icons
+
+package.json        — npm scripts: dev (tauri dev), build (tauri build)
 
 sample_data/        — test files (not committed to prod)
 apps_scripts/       — legacy Google Apps Script (superseded by this app)
 ```
 
-Vendor libraries loaded from CDN in `index.html`: SheetJS, PapaParse, JSZip.
+No build step for the web assets. Vendor libraries are local (not CDN) so the app works fully offline.
+
+---
+
+## Tauri setup — COMPLETE
+
+### Running / building
+```
+npm run dev     # opens live dev window (JS changes hot-reload, Rust changes require restart)
+npm run build   # produces installers in src-tauri/target/release/bundle/
+```
+
+### Distribution
+- **Standalone exe**: `src-tauri/target/release/app.exe` — single file, no install needed, ~9 MB.
+- **Installer (NSIS)**: `bundle/nsis/Vertical Life Helper_0.1.0_x64-setup.exe`
+- **Installer (MSI)**: `bundle/msi/Vertical Life Helper_0.1.0_x64_en-US.msi`
+- Requires WebView2 (pre-installed on Windows 11 / most Windows 10 machines).
+- No code signing cert — SmartScreen will warn on first run; users click "More info → Run anyway".
+
+### Tauri-specific behaviours
+- **Drag-and-drop**: `dragDropEnabled: false` in `tauri.conf.json` — disables Tauri's interception so the browser's native drag-drop events fire normally.
+- **File saving**: Detected via `window.__TAURI_INTERNALS__`. In Tauri, downloads use native OS save/folder-picker dialogs (`plugin:dialog|save`, `plugin:dialog|open`) then write via custom Rust commands (`save_text_file`, `save_binary_file`). In browser, falls back to blob URL download.
+- **Home navigation**: "← Home" button injected into the step nav at steps 1–6 (CSV wizard). Bib Printer already has its own home button in its nav bar.
+
+### Key Tauri 2 notes for future reference
+- App command permissions must be manually defined in `src-tauri/permissions/*.toml` (they are NOT auto-generated). Reference them in capabilities WITHOUT a namespace prefix (e.g. `"allow-save-text-file"`, not `"app:allow-save-text-file"`).
+- Dialog invoke args are wrapped: `{ options: { defaultPath, filters } }` for `plugin:dialog|save` and `plugin:dialog|open`.
+- `tauri-plugin-fs` was intentionally avoided — its scope system blocks writes to user-selected paths when called via raw invoke. Custom Rust commands with `std::fs::write` are used instead.
 
 ---
 
@@ -57,7 +95,7 @@ each excluded row, which column matched, and the reason.
 **Step 4 — Discipline**
 Single or multi-discipline toggle.
 - Single: user types the discipline name (e.g. "Lead") → used as filename suffix.
-- Multi: user picks a column and defines "if column contains X → label Y" rules. 
+- Multi: user picks a column and defines "if column contains X → label Y" rules.
   An athlete can match multiple rules (e.g. "Lead & Boulder") and appears in both files.
   Shows unique column values as chips, live unmatched-row warning, and a value→label mapping table.
 
@@ -70,6 +108,7 @@ filenames) and a type: Athlete / Official / Exclude. Auto-classifies staff keywo
 **Step 6 — Export**
 Lists output files with row counts. Per-file "Preview" modal (table or raw CSV view,
 copy to clipboard). Download buttons: single file, all CSVs separately, or ZIP bundle.
+In Tauri: single file and ZIP show a Save As dialog; "Download all" shows a folder picker.
 
 ### Output format
 No header row. 5 quoted CSV columns per row: `"FirstName","LastName","Gender","DOB","State"`
@@ -141,8 +180,9 @@ Key: `wa_vl_bib_config_v1`. Stores: `{ eventName, images: [{data, position, size
 
 ## What's NOT done / possible next steps
 
-- **Offline vendor files** — currently CDN-dependent (SheetJS, PapaParse, JSZip). Could vendor them locally for offline/Tauri use.
-- **Tauri wrapper** — mentioned as Phase 3 (desktop app packaging).
+- **Code signing** — no cert; SmartScreen warns on first run. Buy OV cert (~£100–300/yr) to eliminate.
+- **Auto-updater** — users re-download manually for new versions. `tauri-plugin-updater` could automate this but needs a hosted update manifest.
 - **Bib background colour/logo** — no per-bib customisation beyond images.
 - **Multiple CSV files for bibs** — currently only one CSV upload at a time.
 - **Export bibs as PDF** — currently relies on the browser's print-to-PDF.
+- **WebView2 bundling** — NSIS installer could bundle the WebView2 bootstrapper for older Windows 10 machines.

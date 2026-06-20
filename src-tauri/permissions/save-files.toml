@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-save-text-file"
+description = "Allows saving a text file to a user-chosen path"
+commands.allow = ["save_text_file"]
+
+[[permission]]
+identifier = "allow-save-binary-file"
+description = "Allows saving a binary file to a user-chosen path"
+commands.allow = ["save_binary_file"]
