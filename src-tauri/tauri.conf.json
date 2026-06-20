@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "org.scwa.vertical-life-helper",
   "build": {
-    "frontendDist": "../public"
+    "frontendDist": "../docs"
   },
   "app": {
     "windows": [

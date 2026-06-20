@@ -23,7 +23,7 @@ public/
   vendor/           — vendored JS libs: xlsx.full.min.js, papaparse.min.js, jszip.min.js
 
 src-tauri/          — Tauri 2 Rust shell + config
-  tauri.conf.json   — app config (frontendDist: ../public, window 1100×800)
+  tauri.conf.json   — app config (frontendDist: ../docs, window 1100×800)
   src/lib.rs        — custom save_text_file / save_binary_file commands
   permissions/      — save-files.toml (Tauri permission definitions for custom commands)
   capabilities/     — default.json
