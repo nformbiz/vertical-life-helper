@@ -34,6 +34,8 @@ const Bibs = (() => {
         if (!saved.fontSizes) saved.fontSizes = { ...DEFAULT_FONT_SIZES };
         if (!saved.positions) saved.positions = { ...DEFAULT_POSITIONS };
         if (saved.includeDiscipline === undefined) saved.includeDiscipline = false;
+        if (saved.hideAthleteName === undefined) saved.hideAthleteName = false;
+        if (saved.hideCategory    === undefined) saved.hideCategory    = false;
         return saved;
       }
     } catch {}
@@ -47,6 +49,8 @@ const Bibs = (() => {
       fontSizes:         { ...DEFAULT_FONT_SIZES },
       positions:         { ...DEFAULT_POSITIONS },
       includeDiscipline: false,
+      hideAthleteName:   false,
+      hideCategory:      false,
     };
   }
 
@@ -138,8 +142,8 @@ const Bibs = (() => {
           ${imgs}
           <div class="bib-event-name" style="font-size:${fs.eventName}pt;top:${pos.eventName}mm">${h(config.eventName)}</div>
           <div class="bib-number"     style="font-size:${fs.bibNumber}pt;top:${pos.bibNumber}mm">${h(a.bib)}</div>
-          <div class="bib-name"       style="font-size:${fs.athleteName}pt;top:${pos.athleteName}mm">${h(a.first)} ${h(a.last)}</div>
-          ${a.ageGender ? `<div class="bib-category" style="font-size:${fs.category}pt;top:${pos.category}mm">${h(config.includeDiscipline ? a.categoryLine : a.ageGender)}</div>` : ''}
+          ${config.hideAthleteName ? '' : `<div class="bib-name" style="font-size:${fs.athleteName}pt;top:${pos.athleteName}mm">${h(a.first)} ${h(a.last)}</div>`}
+          ${a.ageGender && !config.hideCategory ? `<div class="bib-category" style="font-size:${fs.category}pt;top:${pos.category}mm">${h(config.includeDiscipline ? a.categoryLine : a.ageGender)}</div>` : ''}
         </div>
       </div>`;
   }
@@ -232,13 +236,36 @@ const Bibs = (() => {
 
         <div style="margin-bottom:1.75rem">
           <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;width:fit-content">
-            <input type="checkbox" id="bib-include-discipline"${config.includeDiscipline ? ' checked' : ''}
+            <input type="checkbox" id="bib-hide-athlete-name"${config.hideAthleteName ? ' checked' : ''}
+              style="width:1rem;height:1rem;cursor:pointer;accent-color:#2563eb">
+            <span class="field-label" style="margin:0">Hide athlete name</span>
+          </label>
+          <p class="text-muted" style="font-size:.78rem;margin:.3rem 0 0 1.5rem">
+            When checked, the athlete's first and last name are not printed on the bib.
+          </p>
+        </div>
+
+        <div style="margin-bottom:1.75rem">
+          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;width:fit-content">
+            <input type="checkbox" id="bib-hide-category"${config.hideCategory ? ' checked' : ''}
+              style="width:1rem;height:1rem;cursor:pointer;accent-color:#2563eb">
+            <span class="field-label" style="margin:0">Hide category</span>
+          </label>
+          <p class="text-muted" style="font-size:.78rem;margin:.3rem 0 0 1.5rem">
+            When checked, the category line (e.g. <em>U17 Female</em>) is not printed on the bib.
+          </p>
+        </div>
+
+        <div id="bib-discipline-wrap" style="margin-bottom:1.75rem${config.hideCategory ? ';opacity:.4;pointer-events:none' : ''}">
+          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;width:fit-content">
+            <input type="checkbox" id="bib-include-discipline"${config.includeDiscipline && !config.hideCategory ? ' checked' : ''}
               style="width:1rem;height:1rem;cursor:pointer;accent-color:#2563eb">
             <span class="field-label" style="margin:0">Include discipline on bib</span>
           </label>
           <p class="text-muted" style="font-size:.78rem;margin:.3rem 0 0 1.5rem">
             When checked, the category line shows e.g. <em>U17 Female · Lead &amp; Boulder</em>.
             When unchecked, only <em>U17 Female</em> is shown.
+            ${config.hideCategory ? '<br><em>Not available while Hide category is enabled.</em>' : ''}
           </p>
         </div>
 
@@ -267,19 +294,25 @@ const Bibs = (() => {
 
     const hasImages = config.images.some(img => img.data);
 
+    const sliderVisible = key =>
+      !(key === 'athleteName' && config.hideAthleteName) &&
+      !(key === 'category'    && config.hideCategory);
+
     const textSliders = [
       { key: 'eventName',   label: 'Event name',   min: 6,  max: 48,  step: 1, unit: 'pt' },
       { key: 'bibNumber',   label: 'Bib number',   min: 36, max: 250, step: 2, unit: 'pt' },
       { key: 'athleteName', label: 'Athlete name', min: 10, max: 60,  step: 1, unit: 'pt' },
       { key: 'category',    label: 'Category',     min: 7,  max: 36,  step: 1, unit: 'pt' },
-    ].map(s => sliderRowHtml(s.label, `dfs-${s.key}`, fs[s.key], s.min, s.max, s.step, s.unit)).join('');
+    ].filter(s => sliderVisible(s.key))
+     .map(s => sliderRowHtml(s.label, `dfs-${s.key}`, fs[s.key], s.min, s.max, s.step, s.unit)).join('');
 
     const posSliders = [
       { key: 'eventName',   label: 'Event name'   },
       { key: 'bibNumber',   label: 'Bib number'   },
       { key: 'athleteName', label: 'Athlete name' },
       { key: 'category',    label: 'Category'     },
-    ].map(s => sliderRowHtml(s.label, `dpos-${s.key}`, pos[s.key], 0, 140, 1, 'mm')).join('');
+    ].filter(s => sliderVisible(s.key))
+     .map(s => sliderRowHtml(s.label, `dpos-${s.key}`, pos[s.key], 0, 140, 1, 'mm')).join('');
 
     const imgSliders = config.images.map((img, i) =>
       img.data ? sliderRowHtml(`Image ${i + 1}`, `dim-${i}`, img.size, 5, 65, 1, '%') : ''
@@ -569,11 +602,29 @@ const Bibs = (() => {
   function bindConfig() {
     document.getElementById('bib-back-upload').addEventListener('click', () => { view = 'upload'; render(); });
 
+    document.getElementById('bib-hide-category').addEventListener('change', e => {
+      const wrap = document.getElementById('bib-discipline-wrap');
+      const disc = document.getElementById('bib-include-discipline');
+      const note = wrap.querySelector('em');
+      if (e.target.checked) {
+        wrap.style.opacity       = '.4';
+        wrap.style.pointerEvents = 'none';
+        disc.checked             = false;
+        if (note) note.style.display = '';
+      } else {
+        wrap.style.opacity       = '';
+        wrap.style.pointerEvents = '';
+        if (note) note.style.display = 'none';
+      }
+    });
+
     document.getElementById('bib-goto-design').addEventListener('click', () => {
       const name = document.getElementById('bib-event-name').value.trim();
       if (!name) { alert('Please enter the event name — it appears at the top of every bib.'); return; }
       config.eventName         = name;
-      config.includeDiscipline = document.getElementById('bib-include-discipline').checked;
+      config.hideAthleteName   = document.getElementById('bib-hide-athlete-name').checked;
+      config.hideCategory      = document.getElementById('bib-hide-category').checked;
+      config.includeDiscipline = !config.hideCategory && document.getElementById('bib-include-discipline').checked;
       saveConfig();
       view = 'design';
       render();
