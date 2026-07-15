@@ -788,7 +788,7 @@
   // (e.g. "Lead & Boulder" contributes to both Lead and Boulder counts).
   function getRuleMatchCounts(col, rules) {
     if (!col || !rules.length) return rules.map(() => 0);
-    const counts = Transformer.getValueCounts(state.rows, col);
+    const counts = Transformer.getValueCounts(getFilteredRows(), col);
     const result = new Array(rules.length).fill(0);
     for (const [val, count] of Object.entries(counts)) {
       for (let i = 0; i < rules.length; i++) {
@@ -803,7 +803,7 @@
   // Returns unique column values not matched by any rule
   function getUnmatched(col, rules) {
     if (!col) return [];
-    const counts = Transformer.getValueCounts(state.rows, col);
+    const counts = Transformer.getValueCounts(getFilteredRows(), col);
     return Object.entries(counts)
       .filter(([val]) => !rules.some(r =>
         r.contains && val.toLowerCase().includes(r.contains.toLowerCase())
@@ -847,7 +847,7 @@
     const el = document.getElementById('disc-col-values');
     if (!el) return;
     if (!col) { el.innerHTML = ''; return; }
-    const counts = Transformer.getValueCounts(state.rows, col);
+    const counts = Transformer.getValueCounts(getFilteredRows(), col);
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     el.innerHTML = `
       <div class="disc-col-values-wrap">
@@ -891,7 +891,7 @@
     const el = document.getElementById('disc-mapping-table');
     if (!el) return;
     if (!col) { el.innerHTML = '<p class="text-muted" style="font-size:.85rem">Select a column first.</p>'; return; }
-    const counts = Transformer.getValueCounts(state.rows, col);
+    const counts = Transformer.getValueCounts(getFilteredRows(), col);
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     const rows = entries.map(([val, count]) => {
       const matchedRules = rules.filter(r => r.contains && val.toLowerCase().includes(r.contains.toLowerCase()));
