@@ -880,15 +880,49 @@
       </table>`;
   }
 
-  function updateDisciplineContext() {
+  function updateDisciplineContext(rulesOverride) {
     const colEl  = document.getElementById('disc-col');
     if (!colEl) return;
     const col   = colEl.value;
-    const rules = readRules();
+    const rules = rulesOverride || readRules();
     const wrap  = document.getElementById('rules-wrap');
     if (wrap) wrap.innerHTML = disciplineRulesHtml(rules, col);
     bindRuleEvents();
     renderColValues(col);
+    renderUnmatchedWarning(col, rules);
+    const mappingSection = document.getElementById('disc-mapping-section');
+    if (mappingSection && mappingSection.style.display !== 'none') {
+      renderMappingTable(col, rules);
+    }
+  }
+
+  // Updates just the match-count badges in place, without touching the
+  // input DOM nodes — a full re-render on every keystroke steals focus.
+  function updateRuleBadgesOnly() {
+    const colEl = document.getElementById('disc-col');
+    if (!colEl) return;
+    const col  = colEl.value;
+    const rows = [...document.querySelectorAll('.rule-row')];
+    const liveRules = rows.map(row => ({
+      contains: row.querySelector('.rule-contains').value.trim(),
+      label:    row.querySelector('.rule-label').value.trim(),
+    }));
+    const counts = col ? getRuleMatchCounts(col, liveRules) : null;
+    rows.forEach((row, i) => {
+      const r = liveRules[i];
+      const n = counts ? counts[i] : null;
+      const hasText  = !!r.contains;
+      const badgeCls = n === null || !hasText ? 'rule-badge-empty'
+                     : n === 0               ? 'rule-badge-warn'
+                     :                         'rule-badge-ok';
+      const badgeTxt = n === null || !hasText ? ''
+                     : n === 0               ? 'no matches'
+                     :                         `${n} row${n !== 1 ? 's' : ''}`;
+      const badge = row.querySelector('.rule-badge');
+      badge.className   = `rule-badge ${badgeCls}`;
+      badge.textContent = badgeTxt;
+    });
+    const rules = readRules();
     renderUnmatchedWarning(col, rules);
     const mappingSection = document.getElementById('disc-mapping-section');
     if (mappingSection && mappingSection.style.display !== 'none') {
@@ -957,11 +991,11 @@
     document.querySelectorAll('.rule-del').forEach(btn => {
       btn.addEventListener('click', () => {
         state.disciplineRules = readRules().filter((_, i) => i !== Number(btn.dataset.idx));
-        updateDisciplineContext();
+        updateDisciplineContext(state.disciplineRules);
       });
     });
     document.querySelectorAll('.rule-contains, .rule-label').forEach(inp => {
-      inp.addEventListener('input', () => updateDisciplineContext());
+      inp.addEventListener('input', () => updateRuleBadgesOnly());
     });
   }
 
@@ -985,7 +1019,7 @@
     document.getElementById('add-rule').addEventListener('click', () => {
       state.disciplineRules = readRules();
       state.disciplineRules.push({ contains: '', label: '' });
-      updateDisciplineContext();
+      updateDisciplineContext(state.disciplineRules);
     });
 
     const mappingBtn = document.getElementById('show-mapping-btn');
