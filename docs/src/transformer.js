@@ -41,6 +41,17 @@ const Transformer = (() => {
       .join(',');
   }
 
+  // "U15 Female (Born 2012/2013)" → { min: 2012, max: 2013 }
+  // Also handles inconsistent formats: "U11 (born 2017-2018)", "U9 (2017-2018)".
+  function parseBirthYearRange(catRaw) {
+    const str = String(catRaw);
+    const m = str.match(/born\s+(\d{4})\s*(?:[-/–—]|to|and|or)\s*(\d{4})/i)
+      || str.match(/\((\d{4})\D+(\d{4})\)/);
+    if (!m) return null;
+    const a = Number(m[1]), b = Number(m[2]);
+    return { min: Math.min(a, b), max: Math.max(a, b) };
+  }
+
   // Returns all matching discipline labels for a row (a value like "Lead & Boulder"
   // may match multiple rules and the athlete is written to each discipline's file).
   function resolveDisciplines(row, state) {
@@ -76,7 +87,7 @@ const Transformer = (() => {
   }
 
   function generateOutputFiles(state) {
-    const { rows, columnMap, categoryConfig } = state;
+    const { rows, columnMap, categoryConfig, categoryOverrides } = state;
     const buckets = {};
 
     function push(filename, csvRow, isWarning = false) {
@@ -84,26 +95,26 @@ const Transformer = (() => {
       buckets[filename].rows.push(csvRow);
     }
 
-    for (const row of rows) {
+    rows.forEach((row, idx) => {
       // Apply status/payment filter first
-      if (!isRowIncluded(row, state)) continue;
+      if (!isRowIncluded(row, state)) return;
 
       const firstName = String(row[columnMap.firstName] ?? '').trim();
       const lastName  = String(row[columnMap.lastName]  ?? '').trim();
       const gender    = String(row[columnMap.gender]    ?? '').trim();
       const dob       = Parser.normalizeDate(row[columnMap.dob]);
       const stateVal  = String(row[columnMap.state]     ?? '').trim();
-      const catRaw    = String(row[columnMap.category]  ?? '').trim();
+      const catRaw    = String((categoryOverrides && categoryOverrides[idx]) ?? row[columnMap.category] ?? '').trim();
 
       const csvRow = buildCsvRow([firstName, lastName, gender, dob, stateVal]);
       const catConf = categoryConfig[catRaw];
 
       if (!catConf) {
         push('_uncategorised.csv', csvRow, true);
-        continue;
+        return;
       }
 
-      if (catConf.type === 'exclude') continue;
+      if (catConf.type === 'exclude') return;
 
       const label = safeSlug(catConf.label) || 'Unknown';
 
@@ -117,7 +128,7 @@ const Transformer = (() => {
           push(`${label}_${gPart}_${discPart}.csv`, csvRow);
         }
       }
-    }
+    });
 
     return Object.entries(buckets)
       .map(([filename, data]) => ({
@@ -132,5 +143,5 @@ const Transformer = (() => {
       });
   }
 
-  return { getUniqueValues, getValueCounts, generateOutputFiles, isRowIncluded };
+  return { getUniqueValues, getValueCounts, generateOutputFiles, isRowIncluded, parseBirthYearRange };
 })();

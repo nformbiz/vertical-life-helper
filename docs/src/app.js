@@ -23,6 +23,10 @@
     disciplineRules: [],
 
     categoryConfig: {},
+    // Each entry: { min, max } eligible birth years, keyed by raw category value
+    categoryBirthYears: {},
+    // Per-athlete category reassignment, keyed by index into `rows`. Session-only.
+    categoryOverrides: {},
     outputFiles: [],
   };
 
@@ -95,6 +99,15 @@
   function loadCategoryConfig() {
     const saved = lsLoad('catconf', state.fingerprint);
     if (saved) state.categoryConfig = saved;
+  }
+
+  function saveCategoryBirthYears() {
+    lsSave('catbyears', state.fingerprint, state.categoryBirthYears);
+  }
+
+  function loadCategoryBirthYears() {
+    const saved = lsLoad('catbyears', state.fingerprint);
+    if (saved) state.categoryBirthYears = saved;
   }
 
   function hasSavedColumnMap() {
@@ -227,6 +240,18 @@
     return conf;
   }
 
+  // Auto-populates eligible birth years per category from "(Born YYYY/YYYY)"
+  // text in the category value, if present. Keeps any existing user edits.
+  function autoConfigBirthYears(values) {
+    const conf = {};
+    for (const val of values) {
+      if (state.categoryBirthYears[val]) { conf[val] = state.categoryBirthYears[val]; continue; }
+      const parsed = Transformer.parseBirthYearRange(val);
+      conf[val] = parsed ? { min: parsed.min, max: parsed.max } : { min: '', max: '' };
+    }
+    return conf;
+  }
+
   // ── Navigation ─────────────────────────────────────────────────────────────
   const STEPS = [
     { n: 1, label: 'Upload'     },
@@ -234,7 +259,8 @@
     { n: 3, label: 'Filters'    },
     { n: 4, label: 'Discipline' },
     { n: 5, label: 'Categories' },
-    { n: 6, label: 'Export'     },
+    { n: 6, label: 'Review'     },
+    { n: 7, label: 'Export'     },
   ];
 
   function goTo(n) {
@@ -281,6 +307,7 @@
       case 4: el.innerHTML = html4(); bind4(); break;
       case 5: el.innerHTML = html5(); bind5(); break;
       case 6: el.innerHTML = html6(); bind6(); break;
+      case 7: el.innerHTML = html7(); bind7(); break;
     }
   }
 
@@ -349,11 +376,13 @@
       state.rows        = rows;
       state.fingerprint = Parser.hashHeaders(headers);
 
-      state.columnMap = autoDetect(headers);
-      state.filters   = [];
+      state.columnMap         = autoDetect(headers);
+      state.filters           = [];
+      state.categoryOverrides = {};
       loadColumnSettings();
       loadFilters();
       loadCategoryConfig();
+      loadCategoryBirthYears();
 
       status.innerHTML = `<div class="alert alert-success">✓ Parsed <strong>${rows.length} rows</strong> · <strong>${headers.length} columns</strong></div>`;
       setTimeout(() => goTo(2), 700);
@@ -745,8 +774,10 @@
       saveFilters();
       const filtered = getFilteredRows();
       const unique   = Transformer.getUniqueValues(filtered, state.columnMap.category);
-      state.categoryConfig = autoConfigCategories(unique);
+      state.categoryConfig     = autoConfigCategories(unique);
+      state.categoryBirthYears = autoConfigBirthYears(unique);
       saveCategoryConfig();
+      saveCategoryBirthYears();
       goTo(4);
     });
   }
@@ -1260,13 +1291,170 @@
         }
       });
       saveCategoryConfig();
-      state.outputFiles = Transformer.generateOutputFiles(state);
       goTo(6);
     });
   }
 
-  // ── Step 6 — Export ────────────────────────────────────────────────────────
+  // ── Step 6 — Review ────────────────────────────────────────────────────────
+
+  // One entry per included athlete-category row, with mismatch status against
+  // its category's eligible birth-year range (own or reassigned).
+  function getReviewEntries() {
+    const cm = state.columnMap;
+    return state.rows
+      .map((row, idx) => ({ row, idx }))
+      .filter(({ row }) => Transformer.isRowIncluded(row, state))
+      .map(({ row, idx }) => {
+        const rawCat       = String(row[cm.category] ?? '').trim();
+        const effectiveCat = state.categoryOverrides[idx] ?? rawCat;
+        const conf          = state.categoryConfig[effectiveCat];
+        if (!conf || conf.type !== 'athlete') return null;
+        const range    = state.categoryBirthYears[effectiveCat];
+        const hasRange = !!(range && range.min !== '' && range.max !== '');
+        const dobYear  = Number(Parser.normalizeDate(row[cm.dob]).slice(0, 4)) || null;
+        const mismatched = hasRange && dobYear && (dobYear < range.min || dobYear > range.max);
+        return { idx, row, effectiveCat, conf, range, hasRange, dobYear, mismatched, overridden: idx in state.categoryOverrides };
+      })
+      .filter(Boolean);
+  }
+
+  // Category labels are short filename slugs and can collide across
+  // categories (e.g. "U15 Female" and "U15 Male" both label to "U15") — show
+  // the full raw Wild Apricot category text so options stay distinguishable.
+  function athleteCategoryOptions(selected) {
+    return Object.entries(state.categoryConfig)
+      .filter(([, conf]) => conf.type === 'athlete')
+      .map(([raw, conf]) =>
+        `<option value="${h(raw)}" ${raw === selected ? 'selected' : ''}>${h(raw || conf.label)}</option>`
+      ).join('');
+  }
+
+  function reviewRowHtml(entry) {
+    const cm       = state.columnMap;
+    const name     = `${String(entry.row[cm.firstName] ?? '').trim()} ${String(entry.row[cm.lastName] ?? '').trim()}`.trim();
+    const dob      = Parser.normalizeDate(entry.row[cm.dob]);
+    const expected = entry.range ? `${entry.range.min}–${entry.range.max}` : '—';
+    return `
+      <tr>
+        <td>${h(name)}</td>
+        <td>${h(dob)}</td>
+        <td>
+          <div>${h(entry.effectiveCat || entry.conf.label)}</div>
+          <div class="disc-map-warn" style="font-size:.78rem">expects ${h(expected)}</div>
+        </td>
+        <td>
+          <select class="review-move" data-idx="${entry.idx}">${athleteCategoryOptions(entry.effectiveCat)}</select>
+          ${entry.overridden ? `<button class="btn-link review-reset" data-idx="${entry.idx}" style="margin-top:.3rem;display:block">Reset</button>` : ''}
+        </td>
+      </tr>`;
+  }
+
+  function renderReviewList() {
+    const summary = document.getElementById('review-summary');
+    const wrap    = document.getElementById('review-flagged-wrap');
+    if (!summary || !wrap) return;
+    const entries      = getReviewEntries();
+    const flagged      = entries.filter(e => e.mismatched);
+    const uncheckedCats = new Set(entries.filter(e => !e.hasRange).map(e => e.effectiveCat));
+
+    const parts = [];
+    parts.push(flagged.length
+      ? `<div class="alert alert-warning">⚠️ <strong>${flagged.length} athlete${flagged.length !== 1 ? 's' : ''}</strong> ${flagged.length !== 1 ? 'have' : 'has'} a birth date outside their category's eligible range.</div>`
+      : `<div class="alert alert-success">✓ No birth-year mismatches found${uncheckedCats.size ? ' in the categories that have a range set' : ''}.</div>`);
+    if (uncheckedCats.size) {
+      parts.push(`<div class="alert alert-info" style="margin-top:.5rem">ℹ️ <strong>${uncheckedCats.size} categor${uncheckedCats.size !== 1 ? 'ies' : 'y'}</strong> ${uncheckedCats.size !== 1 ? "don't" : "doesn't"} have a birth-year range set, so ${uncheckedCats.size !== 1 ? 'they were' : 'it was'} not checked. Set the range below to enable validation.</div>`);
+    }
+    summary.innerHTML = parts.join('');
+    wrap.innerHTML = flagged.length
+      ? `<table class="map-table">
+          <thead><tr><th>Name</th><th>DOB</th><th>Category</th><th>Move to</th></tr></thead>
+          <tbody>${flagged.map(reviewRowHtml).join('')}</tbody>
+        </table>`
+      : '';
+    document.querySelectorAll('.review-move').forEach(sel => {
+      sel.addEventListener('change', () => {
+        state.categoryOverrides[Number(sel.dataset.idx)] = sel.value;
+        renderReviewList();
+      });
+    });
+    document.querySelectorAll('.review-reset').forEach(btn => {
+      btn.addEventListener('click', () => {
+        delete state.categoryOverrides[Number(btn.dataset.idx)];
+        renderReviewList();
+      });
+    });
+  }
+
+  function categoryRulesRowHtml(rawCat, conf) {
+    const range = state.categoryBirthYears[rawCat] || { min: '', max: '' };
+    return `
+      <tr>
+        <td>${h(rawCat || conf.label)}</td>
+        <td><input type="text" class="byyear-min" data-cat="${h(rawCat)}" value="${h(range.min)}" placeholder="min year" style="max-width:110px"></td>
+        <td><input type="text" class="byyear-max" data-cat="${h(rawCat)}" value="${h(range.max)}" placeholder="max year" style="max-width:110px"></td>
+      </tr>`;
+  }
+
   function html6() {
+    const athleteCats = Object.entries(state.categoryConfig).filter(([, conf]) => conf.type === 'athlete');
+    const byYearsRows = athleteCats.map(([raw, conf]) => categoryRulesRowHtml(raw, conf)).join('');
+    return `
+      <div class="card">
+        <h2>Review Age Groups</h2>
+        <p class="subtitle">Athletes whose date of birth falls outside their category's eligible birth years are flagged below. Move them to the correct category, or fix the eligible range if it's wrong.</p>
+        <div id="review-summary"></div>
+        <div id="review-flagged-wrap" style="margin-top:.75rem"></div>
+        <div style="margin-top:1rem">
+          <button class="btn btn-ghost btn-sm" id="review-byyears-toggle">Edit birth-year rules ▾</button>
+          <div id="review-byyears-section" style="display:none;margin-top:.6rem">
+            <table class="map-table">
+              <thead><tr><th>Category</th><th>Min birth year</th><th>Max birth year</th></tr></thead>
+              <tbody id="review-byyears-body">${byYearsRows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" onclick="App.goTo(5)">← Back</button>
+          <button class="btn btn-primary" id="s6-next">Continue →</button>
+        </div>
+      </div>`;
+  }
+
+  function bind6() {
+    renderReviewList();
+
+    document.getElementById('review-byyears-toggle').addEventListener('click', () => {
+      const section = document.getElementById('review-byyears-section');
+      const btn     = document.getElementById('review-byyears-toggle');
+      const open    = section.style.display !== 'none';
+      section.style.display = open ? 'none' : '';
+      btn.textContent       = open ? 'Edit birth-year rules ▾' : 'Hide birth-year rules ▴';
+    });
+
+    // Update state in place on keystroke — do NOT re-render this table here,
+    // it would destroy the focused input (see the Discipline rule-input bug).
+    document.querySelectorAll('.byyear-min, .byyear-max').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const cat   = inp.dataset.cat;
+        const range = state.categoryBirthYears[cat] || (state.categoryBirthYears[cat] = { min: '', max: '' });
+        const val   = inp.value.trim();
+        const num   = val === '' ? '' : Number(val);
+        const clean = Number.isNaN(num) ? '' : num;
+        if (inp.classList.contains('byyear-min')) range.min = clean;
+        else range.max = clean;
+        renderReviewList();
+      });
+    });
+
+    document.getElementById('s6-next').addEventListener('click', () => {
+      saveCategoryBirthYears();
+      state.outputFiles = Transformer.generateOutputFiles(state);
+      goTo(7);
+    });
+  }
+
+  // ── Step 7 — Export ────────────────────────────────────────────────────────
+  function html7() {
     const total        = state.outputFiles.reduce((s, f) => s + f.count, 0);
     const warnings     = state.outputFiles.filter(f => f.isWarning);
     const excludedRows = state.rows.length - getFilteredRows().length;
@@ -1300,7 +1488,7 @@
         ${warnAlert}
         <div class="file-list">${items}</div>
         <div class="btn-row">
-          <button class="btn btn-ghost" onclick="App.goTo(5)">← Back</button>
+          <button class="btn btn-ghost" onclick="App.goTo(6)">← Back</button>
           <button class="btn btn-ghost" id="export-separate-btn">↓ Download CSV files</button>
           <button class="btn btn-primary" id="export-btn">⬇ Download ZIP</button>
         </div>
@@ -1419,7 +1607,7 @@
     });
   }
 
-  function bind6() {
+  function bind7() {
     ensurePreviewModal();
     document.querySelectorAll('.preview-btn').forEach(btn => {
       btn.addEventListener('click', () => openPreview(Number(btn.dataset.idx)));
