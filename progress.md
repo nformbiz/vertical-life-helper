@@ -186,3 +186,9 @@ Key: `wa_vl_bib_config_v1`. Stores: `{ eventName, images: [{data, position, size
 - **Multiple CSV files for bibs** — currently only one CSV upload at a time.
 - **Export bibs as PDF** — currently relies on the browser's print-to-PDF.
 - **WebView2 bundling** — NSIS installer could bundle the WebView2 bootstrapper for older Windows 10 machines.
+- **TODO (before next event): self-host a Google Font for bib text.** Bib text currently uses the system-UI font stack (`-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`), so `.bib-number`'s `font-weight: 900` may not render as a true black weight on every OS (e.g. Windows/Segoe UI). Fix: pick a Google Font with a real 900 weight, vendor the `.woff2` locally under `docs/vendor/fonts/` (same pattern as the other vendored libs — no CDN, keeps the app offline-capable), add `@font-face`, and await `document.fonts.ready` before `window.print()` in `bindPreview()` (`src/bibs.js`) so print doesn't race the font load.
+  Fonts to review:
+  - **Inter** — variable weight range (100–900) with a real Black, very legible at large sizes.
+  - **Archivo Black** — single-weight (900 only) ultra-bold display font, purpose-built for big bold numerals.
+  - **Barlow Condensed (Black)** — condensed width, useful if bib numbers ever run 3–4 digits and need to fit without shrinking font size.
+  - **Oswald** — classic condensed display font often used on race bibs/posters; only goes up to Bold/700, no true 900 black.
