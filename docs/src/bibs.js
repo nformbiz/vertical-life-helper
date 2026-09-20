@@ -777,5 +777,5 @@ const Bibs = (() => {
     render();
   }
 
-  return { init };
+  return { init, parseBibCsv };
 })();

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bouldering scorecard – reference render</title>
+<!--
+  Standalone reference implementation of the approved scorecard design.
+  Open it in Chrome and print (Save as PDF, margins: None, background graphics on).
+
+  Options via query string, e.g.  ?paper=a4&zones=1&judge=1&boulders=24&merge=0
+    paper     a5 | a4            (default a5, landscape)
+    zones     1 | 0              (default 1)  – 0 = tops-only card
+    judge     1 | 0              (default 0)  – adds a "Judge" initials column after Top
+    boulders  6..30              (default 20)
+    columns   0 | 1 | 2 | 3      (default 0 = auto)  – force the number of columns
+    rows      0 | 1..30          (default 0 = auto)  – force the rows per column (columns fill left to right)
+    merge     1 | 0              (default 1)  – 1 = [Name]/[Bib]/[Category] placeholders for a mail merge,
+                                                0 = blank writing lines
+    event, venue, date, name, bib, category   override the text placeholders
+  Every measurement is written for A5 landscape (794x559 CSS px) and multiplied by S for A4.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Barlow:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#fff;color:#000;font-family:'Barlow',sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @media screen{body{background:#ddd;padding:24px}#card{background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.25)}}
+</style>
+<style id="page-size">@page{size:A5 landscape;margin:0}</style>
+</head>
+<body>
+<div id="card"></div>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var flag = function (k, d) { return q.has(k) ? q.get(k) !== '0' : d; };
+  var cfg = {
+    paper: (q.get('paper') || 'a5').toLowerCase(),
+    zones: flag('zones', true),
+    judge: flag('judge', false),
+    merge: flag('merge', true),
+    boulders: Math.max(6, Math.min(30, parseInt(q.get('boulders') || '20', 10))),
+    columns: Math.min(3, Math.max(0, parseInt(q.get('columns') || '0', 10) || 0)),
+    rows: Math.min(30, Math.max(0, parseInt(q.get('rows') || '0', 10) || 0)),
+    event: q.get('event') || '[Event name]',
+    venue: q.get('venue') || '[Venue]',
+    date: q.get('date') || '[Date]',
+    name: q.get('name') || '[Name]',
+    bib: q.get('bib') || '[Bib]',
+    category: q.get('category') || '[Category]'
+  };
+
+  var P = { a5: { W: 794, H: 559, S: 1, page: 'A5' }, a4: { W: 1123, H: 794, S: 1123 / 794, page: 'A4' } }[cfg.paper] || { W: 794, H: 559, S: 1, page: 'A5' };
+  var W = P.W, H = P.H, S = P.S;
+  var px = function (v) { return +(v * S).toFixed(1) + 'px'; };
+  document.getElementById('page-size').textContent = '@page{size:' + P.page + ' landscape;margin:0}';
+
+  // ---- geometry -------------------------------------------------------
+  var n = cfg.boulders;
+  // Auto: at most 10 rows per column. Overrides: cfg.columns (1-3) and/or cfg.rows (rows per column).
+  var ncol, per;
+  if (cfg.rows > 0) {
+    per = cfg.rows;
+    ncol = Math.min(3, cfg.columns > 0 ? cfg.columns : Math.ceil(n / per));
+    per = Math.max(per, Math.ceil(n / ncol));
+  } else {
+    ncol = Math.min(3, cfg.columns > 0 ? cfg.columns : Math.ceil(n / 10));
+    per = Math.ceil(n / ncol);
+  }
+  ncol = Math.ceil(n / per);               // drop columns that would be empty
+  var AREA = H - 300 * S + (cfg.merge ? 28 * S : 0);  // prefilled header has no labels, so more room                  // vertical space left for the table body
+  var rowH = Math.floor(Math.min(AREA / per, 52 * S));
+  var IW = W - 48 * S, gap = 20 * S;
+  var colW = (IW - gap * (ncol - 1)) / ncol;
+  var fs = Math.round(Math.min(rowH * 0.55, 22 * S));
+  var BLACK = '#000000';
+
+  // ---- small helpers --------------------------------------------------
+  function svg(kind) {
+    var inner = {
+      a: '<line x1="10" y1="3" x2="10" y2="17"/>',                                            // attempt: vertical line
+      z: '<line x1="10" y1="3" x2="10" y2="17"/><line x1="4" y1="17" x2="16" y2="17"/>',      // zone: upside-down T
+      t: '<circle cx="10" cy="10" r="9"/><line x1="10" y1="5" x2="10" y2="15"/>'              // top: circled line
+    }[kind];
+    return '<svg width="' + px(20) + '" height="' + px(20) + '" viewBox="0 0 20 20" fill="none" stroke="#000" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="flex:none">' + inner + '</svg>';
+  }
+  var label = 'font-size:' + px(12) + ';line-height:1;font-weight:700;letter-spacing:.08em;text-transform:uppercase;';
+  function field(text, ph, size, boxH, boxStyle) {
+    var wrap = 'display:flex;flex-direction:column;gap:' + px(2) + ';min-width:0;' + boxStyle;
+    if (cfg.merge) {
+      // prefilled: just the big text, no label and no writing line
+      return '<div style="' + wrap + '"><div style="height:' + px(boxH) + ';display:flex;align-items:flex-end;padding-bottom:' + px(3) + ';' +
+        'font-family:\'Barlow Condensed\',sans-serif;font-size:' + px(size) + ';line-height:1;font-weight:700;white-space:nowrap;overflow:hidden">' + ph + '</div></div>';
+    }
+    // blank: label above a writing line
+    return '<div style="' + wrap + '"><span style="' + label + '">' + text + '</span>' +
+      '<div style="height:' + px(boxH) + ';border-bottom:' + px(2) + ' solid ' + BLACK + '"></div></div>';
+  }
+  function item(kind, text) {
+    return '<div style="display:flex;align-items:center;gap:' + px(4) + '">' + svg(kind) + '<span>' + text + '</span></div>';
+  }
+  function cell(width, extra) { return '<div style="flex:none;width:' + px(width) + ';' + extra + '"></div>'; }
+
+  // ---- header ---------------------------------------------------------
+  var exampleSeq = cfg.zones ? ['a', 'a', 'z', 't'] : ['a', 'a', 'a', 't'];
+  var header =
+    '<div style="display:flex;flex-direction:column;gap:' + px(6) + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:' + px(28) + '">' +
+        // left: name + bib on one line, category underneath
+        '<div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:' + px(6) + '">' +
+          '<div style="display:flex;align-items:flex-end;gap:' + px(20) + '">' +
+            field('Name', cfg.name, 34, 40, 'flex:1 1 0;') +
+            field('Bib #', cfg.bib, 34, 40, 'flex:none;width:' + px(120) + ';') +
+          '</div>' +
+          field('Category', cfg.category, 22, 32, 'flex:none;width:' + px(300) + ';') +
+        '</div>' +
+        // right: competition, venue and date beneath, right-aligned
+        '<div style="flex:none;width:' + px(250) + ';display:flex;flex-direction:column;align-items:flex-end;gap:' + px(4) + ';text-align:right">' +
+          '<h1 style="margin:0;font-family:\'Barlow Condensed\',sans-serif;font-size:' + px(26) + ';line-height:1.05;font-weight:800;letter-spacing:.02em;text-transform:uppercase">' + cfg.event + '</h1>' +
+          '<div style="font-size:' + px(14) + ';line-height:1.25;font-weight:500">' + cfg.venue + '</div>' +
+          '<div style="font-size:' + px(14) + ';line-height:1.25;font-weight:500">' + cfg.date + '</div>' +
+        '</div>' +
+      '</div>' +
+      // key + worked example
+      '<div style="display:flex;align-items:center;gap:' + px(14) + ';font-size:' + px(12) + ';line-height:1;font-weight:700">' +
+        item('a', 'Attempt') + (cfg.zones ? item('z', 'Zone') : '') + item('t', 'Top') +
+        '<div style="flex:none;width:1px;height:' + px(20) + ';background:#000"></div>' +
+        '<span style="letter-spacing:.08em;text-transform:uppercase">Example</span>' +
+        '<div style="display:flex;align-items:center;gap:' + px(5) + ';height:' + px(26) + ';border:1px solid #000;padding:0 ' + px(8) + '">' + exampleSeq.map(svg).join('') + '</div>' +
+        '<span style="font-weight:500">' + (cfg.zones ? 'Zone 3 · Top 4 · blank if not reached' : 'Top 4 · blank if not topped') + '</span>' +
+      '</div>' +
+    '</div>';
+
+  // ---- table ----------------------------------------------------------
+  var headCell = function (w, borderLeft, text) {
+    return '<div style="flex:none;width:' + px(w) + ';display:flex;align-items:center;justify-content:center;border-left:' + borderLeft + ' solid #000;' +
+      'font-size:' + px(12) + ';line-height:1;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap">' + text + '</div>';
+  };
+  var tableHead =
+    '<div style="display:flex;align-items:stretch;height:' + px(26) + '">' +
+      '<div style="flex:none;width:' + px(30) + ';display:flex;align-items:center;justify-content:center;font-size:' + px(12) + ';line-height:1;font-weight:700">#</div>' +
+      '<div style="flex:1 1 0;min-width:0;display:flex;align-items:center;padding-left:' + px(8) + ';border-left:1px solid #000;' + label + 'white-space:nowrap">Attempts</div>' +
+      (cfg.zones ? headCell(36, '1px', 'Zone') : '') +
+      headCell(36, '1px', 'Top') +
+      (cfg.judge ? headCell(44, '1px', 'Judge') : '') +
+    '</div>';
+
+  function row(num) {
+    return '<div style="display:flex;align-items:stretch;height:' + rowH + 'px;border-top:1px solid #000">' +
+      '<div style="flex:none;width:' + px(30) + ';display:flex;align-items:center;justify-content:center;font-family:\'Barlow Condensed\',sans-serif;font-weight:800;font-size:' + fs + 'px;line-height:1">' + num + '</div>' +
+      '<div style="flex:1 1 0;min-width:0;border-left:1px solid #000"></div>' +                      // wide free-form attempts box
+      (cfg.zones ? cell(36, 'border-left:1px solid #000;') : '') +                                     // attempt number of first zone
+      cell(36, 'border-left:1px solid #000;') +                                            // attempt number of top
+      (cfg.judge ? cell(44, 'border-left:1px solid #000;') : '') +                                     // judge initials
+    '</div>';
+  }
+
+  var columns = '';
+  for (var c = 0; c < ncol; c++) {
+    var start = c * per, cnt = Math.min(per, n - start), rows = '';
+    for (var j = 0; j < cnt; j++) rows += row(start + j + 1);
+    columns += '<div style="flex:none;width:' + colW + 'px;border:' + px(1.5) + ' solid #000">' + tableHead + rows + '</div>';
+  }
+
+  // ---- footer ---------------------------------------------------------
+  var total = function (text, borderW) {
+    return '<div style="flex:none;display:flex;flex-direction:column;gap:' + px(3) + ';align-items:center"><span style="' + label + '">' + text + '</span>' +
+      '<div style="width:' + px(76) + ';height:' + px(48) + ';border:' + px(borderW) + ' solid #000"></div></div>';
+  };
+  var official = function (text) {
+    return '<div style="flex:none;display:flex;flex-direction:column;gap:' + px(3) + '"><span style="' + label + '">' + text + '</span>' +
+      '<div style="width:' + px(70) + ';height:' + px(48) + ';border:' + px(1.5) + ' solid #000"></div></div>';
+  };
+  var footer =
+    '<div style="margin-top:auto;display:flex;align-items:flex-end;gap:' + px(18) + '">' +
+      '<div style="flex:none;font-family:\'Barlow Condensed\',sans-serif;font-size:' + px(22) + ';line-height:1;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding-bottom:' + px(12) + '">Totals</div>' +
+      total('Tops', 1.5) + (cfg.zones ? total('Zones', 1.5) : '') +
+      '<div style="flex:1 1 0;display:flex;flex-direction:column;gap:' + px(3) + '"><span style="' + label + '">Athlete signature</span>' +
+        '<div style="height:' + px(48) + ';border-bottom:' + px(1.5) + ' solid #000"></div></div>' +
+      official('Checked') + official('Entered') +
+    '</div>';
+
+  // ---- assemble -------------------------------------------------------
+  var card = document.getElementById('card');
+  card.style.cssText = 'width:' + W + 'px;height:' + H + 'px;padding:' + px(24) + ';display:flex;flex-direction:column;gap:' + px(8) + ';overflow:hidden;background:#fff';
+  card.innerHTML = header + '<div style="display:flex;gap:' + px(20) + ';align-items:flex-start">' + columns + '</div>' + footer;
+})();
+</script>
+</body>
+</html>

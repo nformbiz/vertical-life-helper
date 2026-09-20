@@ -296,9 +296,11 @@
     const el = document.getElementById('content');
     el.innerHTML    = '';
     el.style.display = '';
-    // Always hide bib panel when rendering CSV export steps or home screen
+    // Always hide bib/scorecard panels when rendering CSV export steps or home screen
     const bibEl = document.getElementById('bib-content');
     if (bibEl) bibEl.style.display = 'none';
+    const scorecardEl = document.getElementById('scorecard-content');
+    if (scorecardEl) scorecardEl.style.display = 'none';
     switch (state.step) {
       case 0: el.innerHTML = html0(); bind0(); break;
       case 1: el.innerHTML = html1(); bind1(); break;
@@ -330,12 +332,19 @@
           <p>Generate printable A5 landscape bibs from a Vertical Life athlete export.</p>
           <button class="btn btn-primary" style="pointer-events:none">Open tool →</button>
         </div>
+        <div class="feature-card" id="home-scorecards">
+          <span class="feature-icon">📝</span>
+          <h3>Scorecard Generator</h3>
+          <p>Generate printable self-scoring boulder scorecards, mail-merged from a Vertical Life athlete export.</p>
+          <button class="btn btn-primary" style="pointer-events:none">Open tool →</button>
+        </div>
       </div>`;
   }
 
   function bind0() {
     document.getElementById('home-export').addEventListener('click', () => goTo(1));
     document.getElementById('home-bibs').addEventListener('click', () => Bibs.init());
+    document.getElementById('home-scorecards').addEventListener('click', () => Scorecards.init());
   }
 
   // ── Step 1 — Upload ────────────────────────────────────────────────────────
