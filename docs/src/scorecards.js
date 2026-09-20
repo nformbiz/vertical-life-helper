@@ -121,7 +121,7 @@ const Scorecards = (() => {
     ncol = Math.ceil(n / per); // drop columns that would be empty
     const AREA = H - 300 * S + ((cfg.merge && !cfg.labels) ? 28 * S : 0) // no label row means more room
       - mmToPx(cfg.marginTop) - mmToPx(cfg.marginBottom)
-      - (instructionText ? 16 * S : 0)
+      - (instructionText ? 42 * S : 0)
       - mmToPx(cfg.categoryOffset)
       - (instructionText ? mmToPx(cfg.instructionOffset) : 0);
     const rowH = Math.floor(Math.min(AREA / per, 52 * S));
@@ -172,7 +172,7 @@ const Scorecards = (() => {
           `<div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:${px(6)}">` +
             bibNameRow +
             field('Category', catText, 22, 32, `flex:none;width:${px(300)};margin-top:${mmToPx(cfg.categoryOffset).toFixed(1)}px`) +
-            (instructionText ? `<div style="font-size:${px(10)};line-height:1.3;font-weight:500;margin-top:${(2 * S + mmToPx(cfg.instructionOffset)).toFixed(1)}px">${h(instructionText)}</div>` : '') +
+            (instructionText ? `<div style="font-size:${px(10)};line-height:1.3;font-weight:500;white-space:pre-wrap;overflow:hidden;height:${px(39)};margin-top:${(2 * S + mmToPx(cfg.instructionOffset)).toFixed(1)}px">${h(instructionText)}</div>` : '') +
           '</div>' +
           `<div style="flex:none;width:${px(250)};display:flex;flex-direction:column;align-items:flex-end;gap:${px(4)};text-align:right">` +
             `<h1 style="margin:0;font-family:'Barlow Condensed',sans-serif;font-size:${px(26)};line-height:1.05;font-weight:800;letter-spacing:.02em;text-transform:uppercase">${h(eventText)}</h1>` +
@@ -362,7 +362,7 @@ const Scorecards = (() => {
           </div>
           <div style="max-width:520px;margin-bottom:1.5rem">
             <label class="field-label">Instruction text</label>
-            <input type="text" id="sc-instruction-text" value="${h(config.instructionText)}" placeholder="e.g. No resoles · chalk only on marked volumes">
+            <textarea id="sc-instruction-text" rows="3" placeholder="e.g. No resoles · chalk only on marked volumes">${h(config.instructionText)}</textarea>
             <p class="text-muted" style="font-size:.78rem;margin-top:.35rem">Optional — appears in small text under the category on every card.</p>
           </div>
           <div style="display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap">
