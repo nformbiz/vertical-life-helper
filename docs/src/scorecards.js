@@ -35,7 +35,6 @@ const Scorecards = (() => {
   let athletes         = [];
   let fileName         = '';
   let hasData          = false;   // false = blank-cards-only mode, no CSV uploaded
-  let blankCount       = 20;
   let view             = 'upload'; // 'upload' | 'config' | 'design' | 'select' | 'preview'
   let selectedBibs     = new Set();
   let selectFilterCat  = new Set();
@@ -61,8 +60,10 @@ const Scorecards = (() => {
       marginRight:  0,
       marginBottom: 0,
       marginLeft:   0,
-      categoryOffset:    0,  // vertical nudge, mm, from default position (can be negative)
-      instructionOffset: 0,
+      categoryOffsetFilled:    0,  // Text position sliders, kept separate per Athlete-details mode
+      categoryOffsetBlank:     0,  // so tuning one mode never shifts the other's writing lines
+      instructionOffsetFilled: 0,
+      instructionOffsetBlank:  0,
     };
   }
 
@@ -106,6 +107,8 @@ const Scorecards = (() => {
     const bibText  = athlete && athlete.bib       ? athlete.bib       : '[Bib]';
     const catText  = athlete && athlete.ageGender ? athlete.ageGender : '[Category]';
     const instructionText = (cfg.instructionText || '').trim();
+    const categoryOffset    = cfg.merge ? cfg.categoryOffsetFilled    : cfg.categoryOffsetBlank;
+    const instructionOffset = cfg.merge ? cfg.instructionOffsetFilled : cfg.instructionOffsetBlank;
 
     // ---- geometry ---------------------------------------------------------
     const n = Math.max(6, Math.min(30, cfg.boulders || 20));
@@ -122,8 +125,8 @@ const Scorecards = (() => {
     const AREA = H - 300 * S + ((cfg.merge && !cfg.labels) ? 28 * S : 0) // no label row means more room
       - mmToPx(cfg.marginTop) - mmToPx(cfg.marginBottom)
       - (instructionText ? 42 * S : 0)
-      - mmToPx(cfg.categoryOffset)
-      - (instructionText ? mmToPx(cfg.instructionOffset) : 0);
+      - mmToPx(categoryOffset)
+      - (instructionText ? mmToPx(instructionOffset) : 0);
     const rowH = Math.floor(Math.min(AREA / per, 52 * S));
     const IW = W - 48 * S - mmToPx(cfg.marginLeft) - mmToPx(cfg.marginRight), gap = 20 * S;
     const colW = (IW - gap * (ncol - 1)) / ncol;
@@ -171,8 +174,8 @@ const Scorecards = (() => {
         `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:${px(28)}">` +
           `<div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:${px(6)}">` +
             bibNameRow +
-            field('Category', catText, 22, 32, `flex:none;width:${px(300)};margin-top:${mmToPx(cfg.categoryOffset).toFixed(1)}px`) +
-            (instructionText ? `<div style="font-size:${px(10)};line-height:1.3;font-weight:500;white-space:pre-wrap;overflow:hidden;height:${px(39)};margin-top:${(2 * S + mmToPx(cfg.instructionOffset)).toFixed(1)}px">${h(instructionText)}</div>` : '') +
+            field('Category', catText, 22, 32, `flex:none;width:${px(300)};margin-top:${mmToPx(categoryOffset).toFixed(1)}px`) +
+            (instructionText ? `<div style="font-size:${px(10)};line-height:1.3;font-weight:500;white-space:pre-wrap;overflow:hidden;height:${px(39)};margin-top:${(2 * S + mmToPx(instructionOffset)).toFixed(1)}px">${h(instructionText)}</div>` : '') +
           '</div>' +
           `<div style="flex:none;width:${px(250)};display:flex;flex-direction:column;align-items:flex-end;gap:${px(4)};text-align:right">` +
             `<h1 style="margin:0;font-family:'Barlow Condensed',sans-serif;font-size:${px(26)};line-height:1.05;font-weight:800;letter-spacing:.02em;text-transform:uppercase">${h(eventText)}</h1>` +
@@ -333,14 +336,6 @@ const Scorecards = (() => {
         <input type="radio" name="sc-paper" value="${o.v}" ${config.paper === o.v ? 'checked' : ''}> ${o.label}
       </label>`).join('');
 
-    const mergeOpts = [
-      { v: '1', label: 'Fill in athlete details' },
-      { v: '0', label: 'Leave blank for hand entry' },
-    ].map(o => `
-      <label class="radio-opt ${(config.merge ? '1' : '0') === o.v ? 'selected' : ''}">
-        <input type="radio" name="sc-merge" value="${o.v}" ${(config.merge ? '1' : '0') === o.v ? 'checked' : ''}> ${o.label}
-      </label>`).join('');
-
     return `
       <div class="card" id="sc-config-section" style="margin-bottom:1.5rem">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem">
@@ -392,15 +387,6 @@ const Scorecards = (() => {
             </label>
           </div>
 
-          ${hasData ? `
-            <div class="field-label" style="margin-bottom:.5rem">Athlete details</div>
-            <div class="radio-group">${mergeOpts}</div>
-          ` : `
-            <div style="max-width:220px">
-              <label class="field-label">Number of blank cards</label>
-              <input type="number" id="sc-blank-count" min="1" max="500" value="${blankCount}">
-            </div>
-          `}
       </div>`;
   }
 
@@ -411,14 +397,7 @@ const Scorecards = (() => {
     config.eventVenue = document.getElementById('sc-event-venue').value.trim();
     config.judge      = document.getElementById('sc-judge').checked;
     config.zones      = document.getElementById('sc-zones').checked;
-    if (hasData) {
-      const mergeEl = document.querySelector('input[name="sc-merge"]:checked');
-      config.merge = mergeEl ? mergeEl.value === '1' : true;
-    } else {
-      config.merge = false;
-      const blankEl = document.getElementById('sc-blank-count');
-      if (blankEl) blankCount = Math.max(1, Math.min(500, parseInt(blankEl.value, 10) || 20));
-    }
+    config.merge      = hasData; // CSV uploaded = always mail-merge; blank cards come only from the skip-upload path
   }
 
   function bindConfig() {
@@ -431,17 +410,7 @@ const Scorecards = (() => {
         document.querySelectorAll('input[name="sc-paper"]').forEach(el => el.closest('.radio-opt').classList.toggle('selected', el === r));
       });
     });
-    if (hasData) {
-      document.querySelectorAll('input[name="sc-merge"]').forEach(r => {
-        r.addEventListener('change', () => {
-          config.merge = r.value === '1';
-          saveConfig();
-          render();
-        });
-      });
-    }
-
-    ['sc-event-name', 'sc-instruction-text', 'sc-event-date', 'sc-event-venue', 'sc-zones', 'sc-judge', 'sc-blank-count'].forEach(id => {
+    ['sc-event-name', 'sc-instruction-text', 'sc-event-date', 'sc-event-venue', 'sc-zones', 'sc-judge'].forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
       el.addEventListener('change', () => { readConfigFields(); saveConfig(); });
@@ -465,6 +434,9 @@ const Scorecards = (() => {
     const columnOpts = [0, 1, 2, 3].map(n =>
       `<option value="${n}" ${config.columns === n ? 'selected' : ''}>${n === 0 ? 'Auto' : n}</option>`
     ).join('');
+
+    const categoryOffsetVal    = config.merge ? config.categoryOffsetFilled    : config.categoryOffsetBlank;
+    const instructionOffsetVal = config.merge ? config.instructionOffsetFilled : config.instructionOffsetBlank;
 
     return `
       <div class="card" id="sc-design-section" style="margin-bottom:1.5rem">
@@ -514,8 +486,8 @@ const Scorecards = (() => {
           <div class="field-label" style="margin-bottom:.5rem">Text position</div>
           <p class="text-muted" style="font-size:.75rem;margin-bottom:.65rem">Nudge the category and detail text up or down from their default position.</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 1.5rem;margin-bottom:1.25rem">
-            ${sliderRowHtml('Category', 'sc-category-offset', config.categoryOffset, -15, 30, 1, 'mm')}
-            ${sliderRowHtml('Detail text', 'sc-instruction-offset', config.instructionOffset, -15, 30, 1, 'mm')}
+            ${sliderRowHtml('Category', 'sc-category-offset', categoryOffsetVal, -15, 30, 1, 'mm')}
+            ${sliderRowHtml('Detail text', 'sc-instruction-offset', instructionOffsetVal, -15, 30, 1, 'mm')}
           </div>
 
           ${(hasData && config.merge) ? `
@@ -545,8 +517,15 @@ const Scorecards = (() => {
     config.marginRight  = Math.max(0, Math.min(30, parseInt(document.getElementById('sc-margin-right').value, 10) || 0));
     config.marginBottom = Math.max(0, Math.min(30, parseInt(document.getElementById('sc-margin-bottom').value, 10) || 0));
     config.marginLeft   = Math.max(0, Math.min(30, parseInt(document.getElementById('sc-margin-left').value, 10) || 0));
-    config.categoryOffset    = Math.max(-15, Math.min(30, parseInt(document.getElementById('sc-category-offset').value, 10) || 0));
-    config.instructionOffset = Math.max(-15, Math.min(30, parseInt(document.getElementById('sc-instruction-offset').value, 10) || 0));
+    const categoryOffsetVal    = Math.max(-15, Math.min(30, parseInt(document.getElementById('sc-category-offset').value, 10) || 0));
+    const instructionOffsetVal = Math.max(-15, Math.min(30, parseInt(document.getElementById('sc-instruction-offset').value, 10) || 0));
+    if (config.merge) {
+      config.categoryOffsetFilled    = categoryOffsetVal;
+      config.instructionOffsetFilled = instructionOffsetVal;
+    } else {
+      config.categoryOffsetBlank    = categoryOffsetVal;
+      config.instructionOffsetBlank = instructionOffsetVal;
+    }
     if (hasData && config.merge) {
       const labelsEl = document.getElementById('sc-labels');
       const linesEl  = document.getElementById('sc-lines');
@@ -794,7 +773,7 @@ const Scorecards = (() => {
   function htmlPreview() {
     const cards = hasData
       ? athletes.filter(a => selectedBibs.has(a.bib)).sort((a, b) => Number(a.bib) - Number(b.bib))
-      : Array.from({ length: blankCount });
+      : [null]; // blank mode always generates a single card — print multiple copies via the print dialog
     const n = cards.length;
     return `
       <div class="card" id="sc-config-section" style="margin-bottom:1.5rem">
@@ -825,7 +804,7 @@ const Scorecards = (() => {
     });
     document.getElementById('sc-print').addEventListener('click', async () => {
       const prev = document.title;
-      const n = hasData ? selectedBibs.size : blankCount;
+      const n = hasData ? selectedBibs.size : 1;
       document.title = config.eventName
         ? `${config.eventName} - ${n} Scorecard${n === 1 ? '' : 's'}`
         : `${n} Scorecard${n === 1 ? '' : 's'}`;
