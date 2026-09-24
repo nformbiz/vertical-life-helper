@@ -63,7 +63,13 @@ const Bibs = (() => {
   // ── CSV Parsing ───────────────────────────────────────────────────────────
   // Vertical Life export is semicolon-delimited.
   // Category is derived from which event columns contain "registered".
-  // Column name format: "LEAD U17 Female", "BOULDER U15 Male", etc.
+  // Column name format: "LEAD U17 Female", "BOULDER Next Level Male",
+  // "BOULDER Inclusive Crusher", etc. — the part after the discipline word
+  // is a free-form category label, not just age-group + Male/Female.
+  // Vertical Life also exports a " ticket" / " ticket status" column per
+  // category (e.g. "BOULDER Next Level Male ticket status") — these match
+  // the discipline prefix too, but are naturally excluded below since their
+  // values are ticket/payment info, never the literal "registered".
   function parseBibCsv(text) {
     const result = Papa.parse(text.trim(), {
       header:         true,
@@ -71,7 +77,7 @@ const Bibs = (() => {
       skipEmptyLines: true,
     });
 
-    const CAT_RE = /^(LEAD|BOULDER|SPEED)\s+(U\d+)\s+(Female|Male)$/i;
+    const CAT_RE = /^(LEAD|BOULDER|SPEED)\s+(.+)$/i;
 
     return result.data.map(row => {
       const catCols = Object.keys(row).filter(k => CAT_RE.test(k.trim()));
@@ -86,7 +92,7 @@ const Bibs = (() => {
         if (!m) continue;
         const disc = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
         if (!disciplines.includes(disc)) disciplines.push(disc);
-        if (!ageGender) ageGender = `${m[2]} ${m[3]}`;
+        if (!ageGender) ageGender = m[2].trim();
       }
 
       const categoryLine = ageGender
